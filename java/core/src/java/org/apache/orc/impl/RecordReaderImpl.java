@@ -294,23 +294,38 @@ public class RecordReaderImpl implements RecordReader {
     final boolean onlyLowerBound;
     final boolean onlyUpperBound;
     final boolean hasNulls;
+    final boolean invalid;
+
+    ValueRange(PredicateLeaf predicate, T lower, T upper, boolean hasNulls) {
+      this(predicate, lower, upper, hasNulls, false);
+    }
+
+    ValueRange(PredicateLeaf predicate, T lower, T upper,
+               boolean hasNulls, boolean invalid) {
+      this(predicate, lower, upper, hasNulls, false, false, invalid);
+    }
 
     ValueRange(PredicateLeaf predicate,
                T lower, T upper,
                boolean hasNulls,
                boolean onlyLowerBound,
                boolean onlyUpperBound) {
+      this(predicate, lower, upper, hasNulls, onlyLowerBound, onlyUpperBound, false);
+    }
+
+    ValueRange(PredicateLeaf predicate,
+               T lower, T upper,
+               boolean hasNulls,
+               boolean onlyLowerBound,
+               boolean onlyUpperBound,
+               boolean invalid) {
       PredicateLeaf.Type type = predicate.getType();
       this.lower = getBaseObjectForComparison(type, lower);
       this.upper = getBaseObjectForComparison(type, upper);
       this.hasNulls = hasNulls;
       this.onlyLowerBound = onlyLowerBound;
       this.onlyUpperBound = onlyUpperBound;
-    }
-
-    ValueRange(PredicateLeaf predicate, T lower, T upper,
-               boolean hasNulls) {
-      this(predicate, lower, upper, hasNulls, false, false);
+      this.invalid = invalid;
     }
 
     /**
@@ -355,6 +370,10 @@ public class RecordReaderImpl implements RecordReader {
     boolean isSingleton() {
       return lower != null && !onlyLowerBound && !onlyUpperBound &&
                  lower.equals(upper);
+    }
+
+    boolean invalid() {
+      return this.invalid;
     }
 
     /**
@@ -435,7 +454,7 @@ public class RecordReaderImpl implements RecordReader {
       Boolean max = stats.getTrueCount() != 0;
       return new ValueRange<>(predicate, min, max, stats.hasNull());
     } else {
-      return new ValueRange(predicate, null, null, true);
+      return new ValueRange(predicate, null, null, true, true);
     }
   }
 
@@ -567,7 +586,9 @@ public class RecordReaderImpl implements RecordReader {
                                            boolean useUTCTimestamp) {
     // if we didn't have any values, everything must have been null
     if (!range.hasValues()) {
-      if (predicate.getOperator() == PredicateLeaf.Operator.IS_NULL) {
+      if (range.invalid()) {
+        return TruthValue.YES_NO_NULL;
+      } else if (predicate.getOperator() == PredicateLeaf.Operator.IS_NULL) {
         return TruthValue.YES;
       } else {
         return TruthValue.NULL;
